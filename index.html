@@ -98,12 +98,18 @@
             <div v-if="activeTab === 'steganography'" class="tab-content">
                 <div class="transform-layout">
                     <div class="input-section">
-                        <textarea 
-                            id="steg-input" 
-                            v-model="emojiMessage" 
+                        <textarea
+                            id="steg-input"
+                            v-model="emojiMessage"
                             placeholder="Enter text to hide..."
                             @input="autoEncode"
                         ></textarea>
+                        <div class="watermark-option">
+                            <label>
+                                <input type="checkbox" v-model="watermarkEnabled" @change="autoEncode">
+                                Watermark output
+                            </label>
+                        </div>
                     </div>
                     
                     <!-- Emoji Library Section -->

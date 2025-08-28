@@ -38,6 +38,7 @@ window.app = new Vue({
         decodeInput: '',
         decodedMessage: '',
         selectedCarrier: null,
+        watermarkEnabled: false,
         
         // Universal Decoder - works on both tabs
         universalDecodeInput: '',
@@ -429,6 +430,8 @@ window.app = new Vue({
                 this.encodedMessage = '';
                 return;
             }
+
+            window.steganography.setWatermarking(this.watermarkEnabled);
 
             if (this.activeSteg === 'invisible') {
                 this.encodedMessage = window.steganography.encodeInvisible(this.emojiMessage);
