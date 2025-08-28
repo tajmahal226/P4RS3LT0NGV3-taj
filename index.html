@@ -98,12 +98,18 @@
             <div v-if="activeTab === 'steganography'" class="tab-content">
                 <div class="transform-layout">
                     <div class="input-section">
-                        <textarea 
-                            id="steg-input" 
-                            v-model="emojiMessage" 
+                        <textarea
+                            id="steg-input"
+                            v-model="emojiMessage"
                             placeholder="Enter text to hide..."
                             @input="autoEncode"
                         ></textarea>
+                        <div class="watermark-option">
+                            <label>
+                                <input type="checkbox" v-model="watermarkEnabled" @change="autoEncode">
+                                Watermark output
+                            </label>
+                        </div>
                     </div>
                     
                     <!-- Emoji Library Section -->
@@ -180,6 +186,7 @@
                             <div class="decoded-message" v-if="universalDecodeResult">
                                 <div class="decode-method">
                                     <span>Decoded using: <strong>{{ universalDecodeResult.method }}</strong></span>
+                                    <span v-if="universalDecodeResult.watermarked" class="watermark-indicator">(watermark verified)</span>
                                     <span v-if="activeTransform && universalDecodeResult.method === activeTransform.name" class="decode-priority">(Priority Match)</span>
                                 </div>
                                 <div class="decode-result">{{ universalDecodeResult.text }}</div>
@@ -812,6 +819,7 @@
                             <div class="decoded-message" v-if="universalDecodeResult">
                                 <div class="decode-method">
                                     <span>Decoded using: <strong>{{ universalDecodeResult.method }}</strong></span>
+                                    <span v-if="universalDecodeResult.watermarked" class="watermark-indicator">(watermark verified)</span>
                                     <span v-if="activeTransform && universalDecodeResult.method === activeTransform.name" class="decode-priority">(Priority Match)</span>
                                 </div>
                                 <div class="decode-result">{{ universalDecodeResult.text }}</div>

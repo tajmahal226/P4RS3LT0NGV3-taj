@@ -14,6 +14,36 @@ function setStegOptions(opts) {
     if (!opts) return;
     __stegOptions__ = Object.assign({}, __stegOptions__, opts);
 }
+
+// Watermark configuration (zero-width encoding of "TAJ")
+const __WM_ZERO__ = '\u200B'; // 0 bit
+const __WM_ONE__  = '\u200C'; // 1 bit
+const __WM_SEP__  = '\u200D'; // letter separator
+const __WM_TEXT__ = 'TAJ';
+const __WM_SEQ__  = __WM_TEXT__.split('')
+    .map(ch => ch.charCodeAt(0).toString(2).padStart(8, '0')
+        .replace(/0/g, __WM_ZERO__).replace(/1/g, __WM_ONE__))
+    .join(__WM_SEP__);
+let __watermarkEnabled__ = false;
+function setWatermarking(enabled) {
+    __watermarkEnabled__ = !!enabled;
+}
+function addWatermark(str) {
+    if (!__watermarkEnabled__) return str;
+    return __WM_SEQ__ + str + __WM_SEQ__;
+}
+function extractWatermark(str) {
+    const wm = __WM_SEQ__;
+    let hasStart = str.startsWith(wm);
+    let hasEnd = str.endsWith(wm);
+    let clean = str;
+    if (hasStart) clean = clean.slice(wm.length);
+    if (hasEnd) clean = clean.slice(0, -wm.length);
+    return { watermark: (hasStart && hasEnd) ? __WM_TEXT__ : null, text: clean };
+}
+function verifyWatermark(str) {
+    return extractWatermark(str).watermark === __WM_TEXT__;
+}
 // First define encoding function for preview usage
 function encodeForPreview(emoji, text) {
     if (!text) return emoji;
@@ -46,8 +76,8 @@ function encodeForPreview(emoji, text) {
     if (__stegOptions__.trailingZW) {
         try { result += eval(`'${__stegOptions__.trailingZW}'`); } catch (_) { result += '\u200B'; }
     }
-    
-    return result;
+
+    return addWatermark(result);
 }
 
 const carriers = [
@@ -118,12 +148,16 @@ function encodeEmoji(emoji, text) {
     if (__stegOptions__.trailingZW) {
         try { result += eval(`'${__stegOptions__.trailingZW}'`); } catch (_) { result += '\u200B'; }
     }
-    
-    return result;
+
+    return addWatermark(result);
 }
 
 function decodeEmoji(text) {
     if (!text) return '';
+
+    // Strip watermark if present
+    const wm = extractWatermark(text);
+    text = wm.text;
     
     // Find the first emoji character (looking for common emoji Unicode ranges)
     const emojiMatch = text.match(/^([\u{1F300}-\u{1F6FF}\u{2600}-\u{26FF}\u{1F1E6}-\u{1F1FF}])/u);
@@ -179,13 +213,18 @@ function encodeInvisible(text) {
     if (!text) return '';
     
     const bytes = new TextEncoder().encode(text);
-    return Array.from(bytes)
+    const encoded = Array.from(bytes)
         .map(byte => String.fromCodePoint(0xE0000 + byte))
         .join('');
+    return addWatermark(encoded);
 }
 
 function decodeInvisible(text) {
     if (!text) return '';
+
+    // Strip watermark if present
+    const wm = extractWatermark(text);
+    text = wm.text;
     
     // Extract valid invisible characters
     const matches = [...text.matchAll(/[\uE0000-\uE007F]/g)];
@@ -228,5 +267,8 @@ window.steganography = {
     decodeEmoji,
     encodeInvisible,
     decodeInvisible,
-    setStegOptions
+    setStegOptions,
+    setWatermarking,
+    extractWatermark,
+    verifyWatermark
 };

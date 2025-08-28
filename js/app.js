@@ -38,6 +38,7 @@ window.app = new Vue({
         decodeInput: '',
         decodedMessage: '',
         selectedCarrier: null,
+        watermarkEnabled: false,
         
         // Universal Decoder - works on both tabs
         universalDecodeInput: '',
@@ -430,6 +431,8 @@ window.app = new Vue({
                 return;
             }
 
+            window.steganography.setWatermarking(this.watermarkEnabled);
+
             if (this.activeSteg === 'invisible') {
                 this.encodedMessage = window.steganography.encodeInvisible(this.emojiMessage);
                 // Auto-copy will be handled in setStegMode method
@@ -451,7 +454,8 @@ window.app = new Vue({
             const result = this.universalDecode(this.decodeInput);
             
             if (result) {
-                this.decodedMessage = `Decoded (${result.method}): ${result.text}`;
+                const wmNote = result.watermarked ? ' (watermark verified)' : '';
+                this.decodedMessage = `Decoded (${result.method}${wmNote}): ${result.text}`;
                 
                 // Auto-copy decoded message to clipboard
                 this.$nextTick(() => {
@@ -861,17 +865,23 @@ window.app = new Vue({
                 return;
             }
             
+            // Detect and strip watermark before decoding
+            const wmInfo = window.steganography.extractWatermark(this.universalDecodeInput);
+            const baseInput = wmInfo.text;
+            const watermarked = !!wmInfo.watermark;
+
             // Try to decode using the currently selected transform first, if any
             if (this.activeTransform && this.transformHasReverse(this.activeTransform)) {
                 try {
                     console.log(`Trying to decode with currently selected transform: ${this.activeTransform.name}`);
-                    const decodedText = this.activeTransform.reverse(this.universalDecodeInput);
-                    
+                    const decodedText = this.activeTransform.reverse(baseInput);
+
                     // If the decoded text is different from the input and looks like readable text
-                    if (decodedText !== this.universalDecodeInput && /[a-zA-Z0-9\s]{3,}/.test(decodedText)) {
+                    if (decodedText !== baseInput && /[a-zA-Z0-9\s]{3,}/.test(decodedText)) {
                         this.universalDecodeResult = {
                             text: decodedText,
-                            method: this.activeTransform.name
+                            method: this.activeTransform.name,
+                            watermarked
                         };
                         console.log(`Successfully decoded with ${this.activeTransform.name}`);
                         return;
@@ -880,11 +890,11 @@ window.app = new Vue({
                     console.error(`Error decoding with selected transform ${this.activeTransform.name}:`, e);
                 }
             }
-            
+
             // If the selected transform didn't work or there isn't one selected,
             // fall back to trying all available methods
-            const result = this.universalDecode(this.universalDecodeInput);
-            
+            const result = this.universalDecode(baseInput);
+
             // Update the result
             this.universalDecodeResult = result;
             
@@ -899,7 +909,12 @@ window.app = new Vue({
         // Universal Decoder - tries all decoding methods
         universalDecode(input) {
             if (!input) return '';
-            
+
+            // Detect and strip watermark if present
+            const wmInfo = window.steganography.extractWatermark(input);
+            const watermarked = !!wmInfo.watermark;
+            input = wmInfo.text;
+
             // Try all decoders in order
             
             // 1. Try steganography decoders
@@ -910,7 +925,7 @@ window.app = new Vue({
                 const decoded = window.steganography.decodeEmoji(input);
                 if (decoded) {
                     console.log('Successfully decoded emoji:', decoded);
-                    return { text: decoded, method: 'Emoji Steganography' };
+                    return { text: decoded, method: 'Emoji Steganography', watermarked };
                 } else {
                     console.log('Emoji detected but no hidden message found');
                 }
@@ -920,7 +935,7 @@ window.app = new Vue({
             if (/[\uE0000-\uE007F]/.test(input)) {
                 let decoded = window.steganography.decodeInvisible(input);
                 if (decoded && decoded.length > 0) {
-                    return { text: decoded, method: 'Invisible Text' };
+                    return { text: decoded, method: 'Invisible Text', watermarked };
                 }
             }
             
@@ -935,10 +950,11 @@ window.app = new Vue({
                     if (transformKey && window.transforms[transformKey].reverse) {
                         const result = window.transforms[transformKey].reverse(input);
                         if (result && result !== input) {
-                            return { 
-                                text: result, 
+                            return {
+                                text: result,
                                 method: this.activeTransform.name,
-                                priorityMatch: true 
+                                priorityMatch: true,
+                                watermarked
                             };
                         }
                     }
@@ -957,13 +973,13 @@ window.app = new Vue({
                     if (window.transforms.tengwar && window.transforms.tengwar.reverse) {
                         const result = window.transforms.tengwar.reverse(input);
                         if (result !== input && /[a-zA-Z0-9]/.test(result)) {
-                            return { text: result, method: 'Tengwar Script', priorityMatch: true };
+                            return { text: result, method: 'Tengwar Script', priorityMatch: true, watermarked };
                         }
                     }
                     if (window.transforms.elder_futhark && window.transforms.elder_futhark.reverse) {
                         const result = window.transforms.elder_futhark.reverse(input);
                         if (result !== input && /[a-zA-Z0-9]/.test(result)) {
-                            return { text: result, method: 'Elder Futhark', priorityMatch: true };
+                            return { text: result, method: 'Elder Futhark', priorityMatch: true, watermarked };
                         }
                     }
                 } catch (e) {
@@ -977,7 +993,7 @@ window.app = new Vue({
                     if (window.transforms.hieroglyphics && window.transforms.hieroglyphics.reverse) {
                         const result = window.transforms.hieroglyphics.reverse(input);
                         if (result !== input && /[a-zA-Z0-9]/.test(result)) {
-                            return { text: result, method: 'Hieroglyphics', priorityMatch: true };
+                            return { text: result, method: 'Hieroglyphics', priorityMatch: true, watermarked };
                         }
                     }
                 } catch (e) {
@@ -991,7 +1007,7 @@ window.app = new Vue({
                     if (window.transforms.ogham && window.transforms.ogham.reverse) {
                         const result = window.transforms.ogham.reverse(input);
                         if (result !== input && /[a-zA-Z0-9]/.test(result)) {
-                            return { text: result, method: 'Ogham (Celtic)', priorityMatch: true };
+                            return { text: result, method: 'Ogham (Celtic)', priorityMatch: true, watermarked };
                         }
                     }
                 } catch (e) {
@@ -1005,7 +1021,7 @@ window.app = new Vue({
                     if (window.transforms.mathematical && window.transforms.mathematical.reverse) {
                         const result = window.transforms.mathematical.reverse(input);
                         if (result !== input && /[a-zA-Z0-9]/.test(result)) {
-                            return { text: result, method: 'Mathematical Notation', priorityMatch: true };
+                            return { text: result, method: 'Mathematical Notation', priorityMatch: true, watermarked };
                         }
                     }
                 } catch (e) {
@@ -1019,7 +1035,7 @@ window.app = new Vue({
                     if (window.transforms.chemical && window.transforms.chemical.reverse) {
                         const result = window.transforms.chemical.reverse(input);
                         if (result !== input && /[a-zA-Z0-9]/.test(result)) {
-                            return { text: result, method: 'Chemical Symbols', priorityMatch: true };
+                            return { text: result, method: 'Chemical Symbols', priorityMatch: true, watermarked };
                         }
                     }
                 } catch (e) {
@@ -1034,7 +1050,7 @@ window.app = new Vue({
                     if (window.transforms.binary && window.transforms.binary.reverse) {
                         const result = window.transforms.binary.reverse(input);
                         if (result && /[\x20-\x7E]{3,}/.test(result)) { // Make sure it's readable ASCII
-                            return { text: result, method: 'Binary' };
+                            return { text: result, method: 'Binary', watermarked };
                         }
                     }
                     
@@ -1059,7 +1075,7 @@ window.app = new Vue({
                         }
                         
                         if (result && /[\x20-\x7E]{3,}/.test(result)) { // Make sure it's readable ASCII
-                            return { text: result, method: 'Binary' };
+                            return { text: result, method: 'Binary', watermarked };
                         }
                     }
                 } catch (e) { 
@@ -1074,7 +1090,7 @@ window.app = new Vue({
                     if (window.transforms.morse && window.transforms.morse.reverse) {
                         const result = window.transforms.morse.reverse(input);
                         if (result !== input && /[a-zA-Z0-9]/.test(result)) {
-                            return { text: result, method: 'Morse Code' };
+                            return { text: result, method: 'Morse Code', watermarked };
                         }
                     }
                 } catch (e) {
@@ -1104,7 +1120,7 @@ window.app = new Vue({
                             }
                             
                             if (result !== input && /[a-zA-Z0-9]/.test(result)) {
-                                return { text: result, method: 'Braille' };
+                                return { text: result, method: 'Braille', watermarked };
                             }
                         }
                     }
@@ -1120,7 +1136,7 @@ window.app = new Vue({
                     const result = atob(input.trim());
                     // Check if result is readable text
                     if (/[\x20-\x7E]{3,}/.test(result)) { // At least 3 readable ASCII chars
-                        return { text: result, method: 'Base64' };
+                        return { text: result, method: 'Base64', watermarked };
                     }
                 } catch (e) {
                     // Not valid base64, continue to next decoder
@@ -1134,7 +1150,7 @@ window.app = new Vue({
                     if (window.transforms.base58 && window.transforms.base58.reverse) {
                         const result = window.transforms.base58.reverse(input.trim());
                         if (result && /[\x20-\x7E]{3,}/.test(result)) {
-                            return { text: result, method: 'Base58' };
+                            return { text: result, method: 'Base58', watermarked };
                         }
                     }
                 } catch (e) {
@@ -1148,7 +1164,7 @@ window.app = new Vue({
                     if (window.transforms.base62 && window.transforms.base62.reverse) {
                         const result = window.transforms.base62.reverse(input.trim());
                         if (result && /[\x20-\x7E]{3,}/.test(result)) {
-                            return { text: result, method: 'Base62' };
+                            return { text: result, method: 'Base62', watermarked };
                         }
                     }
                 } catch (e) {
@@ -1162,7 +1178,7 @@ window.app = new Vue({
                     const result = window.transforms.upside_down.reverse(input);
                     // Check if the result is significantly different
                     if (result !== input && result.length > 3 && /[a-zA-Z0-9\s]{3,}/.test(result)) {
-                        return { text: result, method: 'Upside Down' };
+                        return { text: result, method: 'Upside Down', watermarked };
                     }
                 } catch (e) {
                     console.error('Upside Down decode error:', e);
@@ -1190,7 +1206,7 @@ window.app = new Vue({
                         }
                         
                         if (result !== input && /[a-zA-Z]/.test(result)) {
-                            return { text: result, method: 'Small Caps' };
+                            return { text: result, method: 'Small Caps', watermarked };
                         }
                     }
                 } catch (e) {
@@ -1219,7 +1235,7 @@ window.app = new Vue({
                         }
                         
                         if (result !== input && /[a-zA-Z]/.test(result)) {
-                            return { text: result, method: 'Bubble' };
+                            return { text: result, method: 'Bubble', watermarked };
                         }
                     }
                 } catch (e) {
@@ -1235,7 +1251,7 @@ window.app = new Vue({
                     if (window.transforms.hex && window.transforms.hex.reverse) {
                         const result = window.transforms.hex.reverse(input);
                         if (result && /[\x20-\x7E]{3,}/.test(result)) {
-                            return { text: result, method: 'Hexadecimal' };
+                            return { text: result, method: 'Hexadecimal', watermarked };
                         }
                     }
                 } catch (e) {
@@ -1249,14 +1265,14 @@ window.app = new Vue({
                     if (window.transforms.url && window.transforms.url.reverse) {
                         const result = window.transforms.url.reverse(input);
                         if (result !== input && /[\x20-\x7E]{3,}/.test(result)) {
-                            return { text: result, method: 'URL Encoded' };
+                            return { text: result, method: 'URL Encoded', watermarked };
                         }
                     } else {
                         // Fallback implementation
                         try {
                             const result = decodeURIComponent(input);
                             if (result !== input && /[\x20-\x7E]{3,}/.test(result)) {
-                                return { text: result, method: 'URL Encoded' };
+                                return { text: result, method: 'URL Encoded', watermarked };
                             }
                         } catch (e) {
                             console.error('URL decode fallback error:', e);
@@ -1273,7 +1289,7 @@ window.app = new Vue({
                     if (window.transforms.html && window.transforms.html.reverse) {
                         const result = window.transforms.html.reverse(input);
                         if (result !== input && /[\x20-\x7E]{3,}/.test(result)) {
-                            return { text: result, method: 'HTML Entities' };
+                            return { text: result, method: 'HTML Entities', watermarked };
                         }
                     }
                 } catch (e) {
@@ -1288,7 +1304,7 @@ window.app = new Vue({
                     if (window.transforms.rot13 && window.transforms.rot13.reverse) {
                         const result = window.transforms.rot13.reverse(input);
                         if (result !== input) {
-                            return { text: result, method: 'ROT13' };
+                            return { text: result, method: 'ROT13', watermarked };
                         }
                     }
                     
@@ -1296,7 +1312,7 @@ window.app = new Vue({
                     if (window.transforms.caesar && window.transforms.caesar.reverse) {
                         const result = window.transforms.caesar.reverse(input);
                         if (result !== input) {
-                            return { text: result, method: 'Caesar Cipher' };
+                            return { text: result, method: 'Caesar Cipher', watermarked };
                         }
                     }
                 } catch (e) {
@@ -1310,7 +1326,7 @@ window.app = new Vue({
                     if (window.transforms.base32 && window.transforms.base32.reverse) {
                         const result = window.transforms.base32.reverse(input);
                         if (result && /[\x20-\x7E]{3,}/.test(result)) {
-                            return { text: result, method: 'Base32' };
+                            return { text: result, method: 'Base32', watermarked };
                         }
                     }
                 } catch (e) {
@@ -1324,7 +1340,7 @@ window.app = new Vue({
                     if (window.transforms.ascii85 && window.transforms.ascii85.reverse) {
                         const result = window.transforms.ascii85.reverse(input);
                         if (result && /[\x20-\x7E]{3,}/.test(result)) {
-                            return { text: result, method: 'ASCII85' };
+                            return { text: result, method: 'ASCII85', watermarked };
                         }
                     }
                 } catch (e) {
@@ -1343,7 +1359,7 @@ window.app = new Vue({
                         // Fallback implementation to remove combining marks
                         const result = input.replace(/[\u0300-\u036f\u1ab0-\u1aff\u1dc0-\u1dff\u20d0-\u20ff\ufe20-\ufe2f]/g, '');
                         if (result !== input && result.length > 0) {
-                            return { text: result, method: 'Zalgo' };
+                            return { text: result, method: 'Zalgo', watermarked };
                         }
                     }
                 } catch (e) {
@@ -1380,7 +1396,7 @@ window.app = new Vue({
                             }
                             
                             if (result !== input && /[a-zA-Z0-9]/.test(result)) {
-                                return { text: result, method: style.name };
+                                return { text: result, method: style.name, watermarked };
                             }
                         }
                     } catch (e) {
@@ -1418,7 +1434,7 @@ window.app = new Vue({
                             }
                             
                             if (result !== input && /[a-zA-Z0-9]/.test(result)) {
-                                return { text: result, method: language.name };
+                                return { text: result, method: language.name, watermarked };
                             }
                         }
                     } catch (e) {
@@ -1439,7 +1455,7 @@ window.app = new Vue({
                     if (hasAurebeshWords) {
                         const result = window.transforms.aurebesh.reverse(input);
                         if (result !== input && /[a-zA-Z0-9]/.test(result)) {
-                            return { text: result, method: 'Aurebesh (Star Wars)' };
+                            return { text: result, method: 'Aurebesh (Star Wars)', watermarked };
                         }
                     }
                 } catch (e) {
@@ -1475,7 +1491,7 @@ window.app = new Vue({
                             }
                             
                             if (result !== input && /[a-zA-Z0-9]/.test(result)) {
-                                return { text: result, method: script.name };
+                                return { text: result, method: script.name, watermarked };
                             }
                         }
                     } catch (e) {
@@ -1511,7 +1527,7 @@ window.app = new Vue({
                             }
                             
                             if (result !== input && /[a-zA-Z0-9]/.test(result)) {
-                                return { text: result, method: code.name };
+                                return { text: result, method: code.name, watermarked };
                             }
                         }
                     } catch (e) {
@@ -1528,7 +1544,7 @@ window.app = new Vue({
                     if (brainfuckPattern.test(input.trim()) && input.length > 20) {
                         // This looks like brainfuck code, but we can't easily reverse it
                         // Just indicate that it was detected
-                        return { text: '[Brainfuck code detected - cannot decode]', method: 'Brainfuck' };
+                        return { text: '[Brainfuck code detected - cannot decode]', method: 'Brainfuck', watermarked };
                     }
                 } catch (e) {
                     console.error('Brainfuck detection error:', e);
@@ -1541,7 +1557,7 @@ window.app = new Vue({
                     // Look for flag-like characters or emojis
                     const flagPattern = /[🔄🚩🏁🏴🏳️]/;
                     if (flagPattern.test(input)) {
-                        return { text: '[Semaphore flags detected]', method: 'Semaphore Flags' };
+                        return { text: '[Semaphore flags detected]', method: 'Semaphore Flags', watermarked };
                     }
                 } catch (e) {
                     console.error('Semaphore detection error:', e);
@@ -1556,7 +1572,7 @@ window.app = new Vue({
                         const result = transform.reverse(input);
                         // Only return if the result is different and contains readable characters
                         if (result !== input && /[a-zA-Z0-9\s]{3,}/.test(result)) {
-                            return { text: result, method: transform.name };
+                    return { text: result, method: transform.name, watermarked };
                         }
                     } catch (e) {
                         console.error(`Error decoding with ${name}:`, e);
@@ -1590,7 +1606,7 @@ window.app = new Vue({
                 });
                 const joined = decodedTokens.join('');
                 if (joined !== input && /[a-zA-Z0-9\s]{3,}/.test(joined)) {
-                    return { text: joined, method: 'Mixed (token-wise)' };
+                    return { text: joined, method: 'Mixed (token-wise)', watermarked };
                 }
             }
             
