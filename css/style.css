@@ -74,6 +74,10 @@ header {
 
 .logo {
     text-align: left;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
 }
 
 .logo h1 {
@@ -146,6 +150,25 @@ header {
     pointer-events: none;
     opacity: 0.3;
 }
+
+.taj-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.1em;
+    padding: 0.1em 0.4em;
+    border-radius: 4px;
+    border: 1px solid var(--accent-color);
+    background: rgba(var(--accent-color-rgb), 0.1);
+    font-family: 'Courier New', monospace;
+    font-size: 0.6em;
+    font-weight: bold;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.taj-letter.t { color: #ff5252; }
+.taj-letter.a { color: #66bb6a; }
+.taj-letter.j { color: #42a5f5; }
 
 .theme-toggle {
     margin-left: 20px;
