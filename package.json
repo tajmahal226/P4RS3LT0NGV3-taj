@@ -1,1 +1,19 @@
-{}
+{
+  "name": "p4rs3lt0ngv3",
+  "version": "1.0.0",
+  "description": "A powerful web-based text transformation and steganography tool that can encode/decode text in over 50 different languages, scripts, and formats. Think of it as a universal translator for ALL alphabets and writing systems!",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "echo 'no build step'",
+    "start": "serve ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "serve": "^14.2.4",
+    "vercel": "^46.0.5"
+  }
+}
